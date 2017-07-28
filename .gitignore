@@ -3,3 +3,6 @@
 
 # keys
 *.pem
+
+# generated files
+vars/*
