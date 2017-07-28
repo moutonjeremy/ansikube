@@ -1,0 +1,21 @@
+---
+- hosts: local
+  connection: local
+  gather_facts: no
+  vars:
+    state: absent
+  vars_files:
+    - config.yml
+  tasks:
+    - include: roles/aws/tasks/teardown.yml
+    - include: roles/kubernetes/tasks/controller.yml
+    - include: roles/aws/tasks/elb.yml
+    - include: roles/aws/tasks/sg.yml
+    - include: roles/aws/tasks/rt.yml
+    - include: roles/other/tasks/pause.yml
+    - include: roles/aws/tasks/igw.yml
+    - include: roles/aws/tasks/subnet.yml
+    - include: roles/aws/tasks/vpc.yml
+    - include: roles/aws/tasks/key.yml
+    - include: roles/aws/tasks/role.yml
+    - include: roles/openssl/tasks/main.yml

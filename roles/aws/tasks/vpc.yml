@@ -1,0 +1,30 @@
+---
+#
+# Creating VPC
+#
+
+- name:               Create VPC
+  ec2_vpc_net:
+    name:             "{{ vpc_name }}"
+    cidr_block:       "{{ vpc_cidr_block }}"
+    region:           "{{ aws_region }}"
+    state:            "{{ state }}"
+  register: kube_vpc
+
+# var
+- name:               Set VPC ID in variable
+  set_fact:
+    vpc_id:           "{{ kube_vpc.vpc.id }}"
+  when: state == "present"
+
+- name: VPC | Write vpc id to file inside the vars directory
+  shell: echo "{{ kube_vpc.vpc.id }}" > "{{ vpc_name }}-vpc-info.yml"
+  args:
+    chdir: vars/
+  when: state == "present"
+
+- name: VPC | delete var file
+  file:
+    path: "aws/vars/{{ vpc_name }}-vpc-info.yml"
+    state: "{{ state }}"
+  when: state == "absent"

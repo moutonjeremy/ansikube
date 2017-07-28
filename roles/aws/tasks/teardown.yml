@@ -1,0 +1,12 @@
+---
+- name: VPC | Set the public and private subnet id as facts
+  set_fact:
+    vpc_id: "{{ lookup('file', 'vars/' + vpc_name + '-vpc-info.yml') }}"
+
+- name: IGW
+  set_fact:
+    igw_id: "{{ lookup('file', 'vars/' + vpc_name + '-igw-info.yml') }}"
+
+- name: RT
+  set_fact:
+    rt_id: "{{ lookup('file', 'vars/' + vpc_name + '-rt-info.yml') }}"

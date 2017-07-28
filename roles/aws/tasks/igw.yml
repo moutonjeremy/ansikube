@@ -1,0 +1,24 @@
+---
+- name:         Create internet gateway
+  ec2_vpc_igw:
+    vpc_id:     "{{ vpc_id }}"
+    region:     "{{ aws_region }}"
+    state:      "{{ state }}"
+  register: kube_vpc_igw
+
+- name:               Set Internet Gateway ID in variable
+  set_fact:
+    igw_id:           "{{ kube_vpc_igw.gateway_id }}"
+  when: state == "present"
+
+- name: IGW
+  shell: echo "{{ kube_vpc_igw.gateway_id }}" > "{{ vpc_name }}-igw-info.yml"
+  args:
+    chdir: vars/
+  when: state == "present"
+
+- name: IGW | delete var file
+  file:
+    path: "vars/{{ vpc_name }}-igw-info.yml"
+    state: "{{ state }}"
+  when: state == "absent"

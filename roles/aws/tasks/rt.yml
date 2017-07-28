@@ -1,0 +1,33 @@
+- name:                 Create route table
+  ec2_vpc_route_table:
+    vpc_id:             "{{ vpc_id }}"
+    region:             "{{ aws_region }}"
+    tags:
+      Name:             "Public"
+    subnets:            "{{ subnet_ids }}"
+    routes:
+      - dest:           "0.0.0.0/0"
+        gateway_id:     "{{ igw_id }}"
+  register:             kube_vpc_rt
+  when:                 state == "present" 
+
+- name:                 RT
+  shell:                echo "{{ kube_vpc_rt.route_table.id }}" > "{{ vpc_name }}-rt-info.yml"
+  args:
+    chdir:              vars/
+  when:                 state == "present"
+
+- name:                 Delete route table
+  ec2_vpc_route_table:
+    vpc_id:             "{{ vpc_id }}"
+    region:             "{{ aws_region }}"
+    route_table_id:     "{{ rt_id }}"
+    lookup:             "id"
+    state:              "{{ state }}"
+  when:                 state == "absent"
+
+- name:                 RT | delete var file
+  file:
+    path:               "vars/{{ vpc_name }}-rt-info.yml"
+    state:              "{{ state }}"
+  when:                 state == "absent"

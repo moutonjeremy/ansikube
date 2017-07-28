@@ -1,0 +1,35 @@
+- name:                           template for role
+  template:
+    src:                          roles/aws/templates/controller_policy.json.j2
+    dest:                         templates/controller_policy.json
+  when:                           state == "present"
+
+- name:                           create role
+  iam_role:
+    name:                         "{{ vpc_name }}_controller_role"
+    assume_role_policy_document:  "{{ lookup('file','roles/aws/templates/role.json') }}"
+    state:                        "{{ state }}"
+  when:                           state == "present"
+
+- name:                           Create and attach IAM policy to IAM role
+  iam_policy:
+    iam_type:                     role
+    iam_name:                     "{{ vpc_name }}_controller_role"
+    policy_name:                  "{{ vpc_name }}_controller_policy"
+    state:                        "{{ state }}"
+    policy_document:              "templates/controller_policy.json"
+  when:                           state == "present"
+
+- name:                           delete IAM policy to IAM role
+  iam_policy:
+    iam_type:                     role
+    iam_name:                     "{{ vpc_name }}_controller_role"
+    policy_name:                  "{{ vpc_name }}_controller_policy"
+    state:                        "{{ state }}"
+  when:                           state == "absent"
+
+- name:                           delete role
+  iam_role:
+    name:                         "{{ vpc_name }}_controller_role"
+    state:                        "{{ state }}"
+  when:                           state == "absent"

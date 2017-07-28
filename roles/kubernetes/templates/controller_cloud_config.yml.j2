@@ -1,0 +1,218 @@
+#cloud-config
+coreos:
+  update:
+    reboot-strategy: "off"
+  etcd2:
+    name: master
+    listen-client-urls: https://0.0.0.0:2379,https://0.0.0.0:4001
+    advertise-client-urls: https://PRIVATE_IP:2379,https://PRIVATE_IP:4001
+    initial-cluster-token: k8s_etcd
+    listen-peer-urls: https://PRIVATE_IP:2380,http://PRIVATE_IP:7001
+    initial-advertise-peer-urls: https://PRIVATE_IP:2380
+    initial-cluster: master=https://PRIVATE_IP:2380
+    initial-cluster-state: new
+    # cert
+    trusted-ca-file: /etc/kubernetes/ssl/ca.crt
+    cert-file: /etc/kubernetes/ssl/admin.pem
+    key-file: /etc/kubernetes/ssl/admin-key.pem
+    peer-trusted-ca-file: /etc/kubernetes/ssl/ca.crt
+    peer-cert-file: /etc/kubernetes/ssl/worker.pem
+    peer-key-file: /etc/kubernetes/ssl/worker-key.pem
+  flannel:
+    interface: $private_ipv4
+    etcd_cafile: /etc/kubernetes/ssl/ca.pem
+    etcd_certfile: /etc/kubernetes/ssl/etcd-client.pem
+    etcd_keyfile: /etc/kubernetes/ssl/etcd-client-key.pem
+  units:
+    - name: etcd2.service
+      command: start
+
+    - name: cfn-etcd-environment.service
+      enable: true
+      command: start
+      runtime: true
+      content: |
+        [Unit]
+        Description=Fetches etcd static IP addresses list from CF
+        After=network-online.target
+
+        [Service]
+        Restart=on-failure
+        RemainAfterExit=true
+        ExecStart=/bin/sh -ec "echo ETCD_ENDPOINTS='https://{{ elb_url }}:2379' > /etc/etcd-environment"
+
+    - name: docker.service
+      drop-ins:
+
+        - name: 10-post-start-check.conf
+          content: |
+            [Service]
+            RestartSec=10
+            ExecStartPost=/usr/bin/docker pull gcr.io/google_containers/pause-amd64:3.0
+
+        - name: 40-flannel.conf
+          content: |
+            [Unit]
+            Wants=flanneld.service
+            [Service]
+            EnvironmentFile=/etc/kubernetes/cni/docker_opts_cni.env
+            ExecStartPre=/usr/bin/systemctl is-active flanneld.service
+
+        - name: 60-logfilelimit.conf
+          content: |
+            [Service]
+            Environment="DOCKER_OPTS=--log-opt max-size=50m --log-opt max-file=3"
+    
+    - name: flanneld.service
+      drop-ins:
+        - name: 10-etcd.conf
+          content: |
+            [Unit]
+            Wants=cfn-etcd-environment.service
+            After=cfn-etcd-environment.service
+
+            [Service]
+            EnvironmentFile=-/etc/etcd-environment
+            Environment="ETCD_SSL_DIR=/etc/kubernetes/ssl"
+            EnvironmentFile=-/run/flannel/etcd-endpoints.opts
+            ExecStartPre=/usr/bin/systemctl is-active cfn-etcd-environment.service
+            ExecStartPre=/bin/sh -ec "echo FLANNELD_ETCD_ENDPOINTS=${ETCD_ENDPOINTS} >/run/flannel/etcd-endpoints.opts"
+            ExecStartPre=/usr/bin/etcdctl \
+            --ca-file=/etc/kubernetes/ssl/ca.crt \
+            --cert-file=/etc/kubernetes/ssl/worker.pem \
+            --key-file=/etc/kubernetes/ssl/worker-key.pem \
+            --endpoints="${ETCD_ENDPOINTS}" \
+            set /coreos.com/network/config '{"Network" : "10.2.0.0/16", "Backend" : {"Type" : "vxlan"}}}'
+            TimeoutStartSec=120
+        
+    - name: kubelet.service
+      command: start
+      runtime: true
+      content: |
+        [Unit]
+        Wants=flanneld.service cfn-etcd-environment.service
+        After=cfn-etcd-environment.service
+        [Service]
+        EnvironmentFile=-/etc/etcd-environment
+        Environment=KUBELET_IMAGE_TAG={{ kube_version }}
+        Environment=KUBELET_IMAGE_URL=quay.io/coreos/hyperkube
+        Environment="RKT_RUN_ARGS=--volume dns,kind=host,source=/etc/resolv.conf \
+        --set-env=ETCD_CA_CERT_FILE=/etc/kubernetes/ssl/ca.pem \
+        --set-env=ETCD_CERT_FILE=/etc/kubernetes/ssl/etcd-client.pem \
+        --set-env=ETCD_KEY_FILE=/etc/kubernetes/ssl/etcd-client-key.pem \
+        --mount volume=dns,target=/etc/resolv.conf \
+        --volume var-lib-cni,kind=host,source=/var/lib/cni \
+        --mount volume=var-lib-cni,target=/var/lib/cni \
+        --volume var-log,kind=host,source=/var/log \
+        --mount volume=var-log,target=/var/log \
+        --volume etc-kubernetes,kind=host,source=/etc/kubernetes \
+        --mount volume=etc-kubernetes,target=/etc/kubernetes"
+        ExecStartPre=/usr/bin/systemctl is-active flanneld.service
+        ExecStartPre=/usr/bin/systemctl is-active cfn-etcd-environment.service
+        ExecStartPre=/usr/bin/mkdir -p /var/lib/cni
+        ExecStartPre=/usr/bin/mkdir -p /var/log/containers
+        ExecStartPre=/usr/bin/mkdir -p /opt/cni/bin
+        ExecStartPre=/usr/bin/etcdctl \
+                       --ca-file /etc/kubernetes/ssl/ca.crt \
+                       --key-file /etc/kubernetes/ssl/worker-key.pem \
+                       --cert-file /etc/kubernetes/ssl/worker.pem \
+                       --endpoints "${ETCD_ENDPOINTS}" \
+                       cluster-health
+
+        ExecStartPre=/bin/sh -ec "find /etc/kubernetes/manifests /srv/kubernetes/manifests  -maxdepth 1 -type f | xargs --no-run-if-empty sed -i 's|#ETCD_ENDPOINTS#|${ETCD_ENDPOINTS}|'"
+        ExecStart=/usr/lib/coreos/kubelet-wrapper \
+        --kubeconfig=/etc/kubernetes/controller-kubeconfig.yaml \
+        --require-kubeconfig \
+        --cni-conf-dir=/etc/kubernetes/cni/net.d \
+        --cni-bin-dir=/opt/cni/bin \
+        --network-plugin=cni \
+        --container-runtime=docker \
+        --rkt-path=/usr/bin/rkt \
+        --rkt-stage1-image=coreos.com/rkt/stage1-coreos \
+        --node-labels node-role.kubernetes.io/master \
+        --register-with-taints=node.alpha.kubernetes.io/role=master:NoSchedule \
+        --allow-privileged=true \
+        --pod-manifest-path=/etc/kubernetes/manifests \
+        --cluster-dns=10.3.0.10 \
+        --cluster-domain=cluster.local \
+        --cloud-provider=aws
+        Restart=always
+        RestartSec=10
+
+        [Install]
+        WantedBy=multi-user.target
+
+write_files:
+
+  - path: /etc/kubernetes/cni/docker_opts_cni.env
+    content: |
+      DOCKER_OPT_BIP=""
+      DOCKER_OPT_IPMASQ=""
+
+  - path: /opt/bin/host-rkt
+    permissions: 0755
+    owner: root:root
+    content: |
+      #!/bin/sh
+      # This is bind mounted into the kubelet rootfs and all rkt shell-outs go
+      # through this rkt wrapper. It essentially enters the host mount namespace
+      # (which it is already in) only for the purpose of breaking out of the chroot
+      # before calling rkt. It makes things like rkt gc work and avoids bind mounting
+      # in certain rkt filesystem dependancies into the kubelet rootfs. This can
+      # eventually be obviated when the write-api stuff gets upstream and rkt gc is
+      # through the api-server. Related issue:
+      # https://github.com/coreos/rkt/issues/2878
+      exec nsenter -m -u -i -n -p -t 1 -- /usr/bin/rkt "$@"
+
+  - path: /etc/kubernetes/ssl/ca.crt
+    permissions: 0644
+    encoding: gzip+base64
+    content: {{ ca_crt.stdout }}
+  
+  - path: /etc/kubernetes/ssl/admin.pem
+    permissions: 0644
+    encoding: gzip+base64
+    content: {{ admin_crt.stdout }}
+  
+  - path: /etc/kubernetes/ssl/admin-key.pem
+    permissions: 0644
+    encoding: gzip+base64
+    content: {{ admin_key.stdout }}
+  
+  - path: /etc/kubernetes/ssl/worker.pem
+    permissions: 0644
+    encoding: gzip+base64
+    content: {{ worker_crt.stdout }}
+  
+  - path: /etc/kubernetes/ssl/worker-key.pem
+    permissions: 0644
+    encoding: gzip+base64
+    content: {{ worker_key.stdout }}
+  
+  - path: /etc/kubernetes/controller-kubeconfig.yaml
+    content: |
+        apiVersion: v1
+        kind: Config
+        clusters:
+        - name: local
+          cluster:
+            server: http://localhost:8080
+        users:
+        - name: kubelet
+        contexts:
+        - context:
+            cluster: local
+            user: kubelet
+          name: kubelet-context
+        current-context: kubelet-context
+
+
+  - path: /etc/kubernetes/cni/net.d/10-flannel.conf
+    content: |
+        {
+            "name": "podnet",
+            "type": "flannel",
+            "delegate": {
+                "isDefaultGateway": true
+            }
+        }

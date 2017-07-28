@@ -1,0 +1,13 @@
+---
+- hosts: local
+  connection: local
+  gather_facts: no
+  vars:
+    state: update
+  vars_files:
+    - config.yml
+  tasks:
+    - include: roles/aws/tasks/teardown.yml
+    - include: roles/openssl/tasks/vars.yml
+    - include: roles/aws/tasks/elb.yml
+    - include: roles/kubernetes/tasks/controller.yml

@@ -1,0 +1,93 @@
+- name:             get ip
+  shell:            curl ifconfig.co
+  register:         external_ip
+
+- name:             sg ec2 group main
+  ec2_group:
+    name:           "{{ vpc_name}}_main"
+    description:    "{{ vpc_name}}_main"
+    vpc_id:         "{{ vpc_id }}"
+    region:         "{{ aws_region }}"
+    state:          "{{ state }}"
+    rules:
+      - proto:      "TCP"
+        from_port:  "22"
+        to_port:    "22"
+        cidr_ip:    "{{ external_ip.stdout }}/32"
+  register:         sg_main
+
+- name:             sg ec2 group worker list
+  ec2_group:
+    name:           "{{ vpc_name}}_{{ item.key }}"
+    description:    "{{ vpc_name}}_{{ item.key }}"
+    vpc_id:         "{{ vpc_id }}"
+    region:         "{{ aws_region }}"
+    state:          "{{ state }}"
+  with_dict:        "{{ worker_list }}"
+
+- name:             sg ec2 group controller
+  ec2_group:
+    name:           "{{ vpc_name}}_controller"
+    description:    "{{ vpc_name}}_controller"
+    vpc_id:         "{{ vpc_id }}"
+    region:         "{{ aws_region }}"
+    state:          "{{ state }}"
+    rules:
+      - proto:      "TCP"
+        from_port:  "2379"
+        to_port:    "2379"
+        cidr_ip:    "{{ vpc_cidr_block }}"
+  register:         sg_controller
+  when:             state == "present"
+
+- name:             sg ec2 group elb controller
+  ec2_group:
+    name:           "{{ vpc_name}}_elb_controller"
+    description:    "{{ vpc_name}}_elb_controller"
+    vpc_id:         "{{ vpc_id }}"
+    region:         "{{ aws_region }}"
+    state:          "{{ state }}"
+    rules:
+      - proto:      "TCP"
+        from_port:  "2379"
+        to_port:    "2379"
+        group_name: "{{ vpc_name}}_controller"
+      - proto:      "TCP"
+        from_port:  "443"
+        to_port:    "443"
+        cidr_ip:    "0.0.0.0/0"
+  register:         sg_elb_controller
+  when:             state == "present"
+
+- name:             delete ec2 group elb controller
+  ec2_group:
+    name:           "{{ vpc_name}}_elb_controller"
+    description:    "{{ vpc_name}}_elb_controller"
+    vpc_id:         "{{ vpc_id }}"
+    region:         "{{ aws_region }}"
+    state:          "present"
+    purge_rules:    true
+  when:             state == "absent"
+
+- pause:
+    seconds: 10
+  when:             state == "absent"
+
+- name:             delete ec2 group elb controller
+  ec2_group:
+    name:           "{{ vpc_name}}_elb_controller"
+    description:    "{{ vpc_name}}_elb_controller"
+    vpc_id:         "{{ vpc_id }}"
+    region:         "{{ aws_region }}"
+    state:          "{{ state }}"
+  when:             state == "absent"
+
+- name:             delete ec2 group controller
+  ec2_group:
+    name:           "{{ vpc_name}}_controller"
+    description:    "{{ vpc_name}}_controller"
+    vpc_id:         "{{ vpc_id }}"
+    region:         "{{ aws_region }}"
+    state:          "{{ state }}"
+    purge_rules:    true
+  when:             state == "absent"

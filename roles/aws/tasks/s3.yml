@@ -1,0 +1,6 @@
+- name:         create s3 bucket
+  s3:
+    bucket:     "{{ s3_path }}"
+    object:     "/{{ env }}"
+    mode:       create
+    region:     "{{ aws_region }}"

@@ -1,0 +1,96 @@
+- name:                         set user_data_file
+  set_fact:
+    userdata_file:              "{{ vpc_name }}_etcd_cloud_config"
+  when:                         state == "present" or state == "update"
+
+- name:                         get etcd token
+  shell:                        curl -s https://discovery.etcd.io/new?size=3
+  register:                     discovery_token
+  when:                         state == "present" or state == "update"
+
+- name:                         userdata file template
+  template:
+    src:                        roles/kubernetes/templates/user_data.yml.j2
+    dest:                       templates/user_data_controller.yml
+  when:                         state == "present" or state == "update"
+
+- name:                         cloud-config template
+  template:
+    src:                        roles/kubernetes/templates/controller_cloud_config.yml.j2
+    dest:                       templates/controller_cloud_config.yml
+  when:                         state == "present" or state == "update"
+
+- name:                         upload cloud-config to s3
+  s3:
+    bucket:                     "{{ s3_path }}"
+    object:                     "/{{ env }}/{{ userdata_file }}"
+    src:                        "templates/controller_cloud_config.yml"
+    mode:                       put
+  when:                         state == "present" or state == "update"
+
+- name:                         launch configuration controller
+  ec2_lc:
+    name:                       "{{ vpc_name }}_lc_controller"
+    image_id:                   "{{ controller.ami_id }}"
+    key_name:                   "{{ vpc_name }}"
+    region:                     "{{ aws_region }}"
+    security_groups:            ["{{ sg_main.group_id }}", "{{ sg_controller.group_id }}"]
+    instance_type:              "{{ controller.instance_type }}"
+    instance_profile_name:      "{{ vpc_name }}_controller_role"
+    state:                      "{{ state }}"
+    user_data:                  "{{ lookup('file', 'templates/user_data_controller.yml') }}"
+    volumes:
+    - device_name:              "/dev/xvda"
+      volume_size:              "{{ controller.volume_root.size }}"
+      device_type:              "{{ controller.volume_root.type }}"
+      delete_on_termination:    true
+  when:                         state == "present"
+
+- name:                         autoscaling group controller
+  ec2_asg:
+    name:                       "{{ vpc_name }}_asg_controller"
+    launch_config_name:         "{{ vpc_name }}_lc_controller"
+    min_size:                   "{{ controller.autoscaling_group.min }}"
+    max_size:                   "{{ controller.autoscaling_group.max }}"
+    desired_capacity:           "{{ controller.autoscaling_group.desired }}"
+    vpc_zone_identifier:        "{{ subnet_ids }}"
+    state:                      "{{ state }}"
+    region:                     "{{ aws_region }}"
+    load_balancers:             ["{{ vpc_name | replace('_', '-') }}-elb-controller"]
+    tags:
+      - environment:            "{{ env }}"
+        Kubernetes:             "{{ vpc_name }}"
+        type:                   "controller"
+        Name:                   "{{ vpc_name }}_controller"
+        propagate_at_launch:    true
+  when:                         state == "present"
+
+- name:                         autoscaling group controller
+  ec2_asg:
+    name:                       "{{ vpc_name }}_asg_controller"
+    launch_config_name:         "{{ vpc_name }}_lc_controller"
+    min_size:                   "{{ controller.autoscaling_group.min }}"
+    max_size:                   "{{ controller.autoscaling_group.max }}"
+    desired_capacity:           "{{ controller.autoscaling_group.desired }}"
+    state:                      "{{ state }}"
+    region:                     "{{ aws_region }}"
+    tags:
+      - environment:            "{{ env }}"
+        Kubernetes:             "{{ vpc_name }}"
+        type:                   "controller"
+        Name:                   "{{ vpc_name }}_controller"
+  when:                         state == "absent"
+
+- name:                         launch configuration controller
+  ec2_lc:
+    name:                       "{{ vpc_name }}_lc_controller"
+    image_id:                   "{{ controller.ami_id }}"
+    key_name:                   "{{ vpc_name }}"
+    region:                     "{{ aws_region }}"
+    state:                      "{{ state }}"
+    volumes:
+    - device_name:              "/dev/xvda1"
+      volume_size:              "{{ controller.volume_root.size }}"
+      device_type:              "{{ controller.volume_root.type }}"
+      delete_on_termination:    true
+  when:                         state == "absent"

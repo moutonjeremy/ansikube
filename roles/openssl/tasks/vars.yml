@@ -1,0 +1,69 @@
+- name:                 ca_crt_file
+  set_fact:
+    ca_crt_file:        "{{ lookup('file', '{{ ca_path }}/ca.pem') }}"
+  when:                 state == "present" or state == "update"
+
+- name:                 cat_crt
+  shell:                echo "{{ ca_crt_file }}" | gzip | base64
+  register:             ca_crt
+  when:                 state == "present" or state == "update"
+
+- name:                 apiserver_key_file
+  set_fact:
+    apiserver_key_file: "{{ lookup('file', '{{ ca_path }}/apiserver-key.pem') }}"
+  when:                 state == "present" or state == "update"
+
+- name:                 apiserver_key
+  shell:                echo "{{ apiserver_key_file }}" | gzip | base64
+  register:             apiserver_key
+  when:                 state == "present" or state == "update"
+
+- name:                 apiserver_crt_file
+  set_fact:
+    apiserver_crt_file: "{{ lookup('file', '{{ ca_path }}/apiserver.pem') }}"
+  when:                 state == "present" or state == "update"
+
+- name:                 apiserver_crt
+  shell:                echo "{{ apiserver_crt_file }}" | gzip | base64
+  register:             apiserver_crt
+  when:                 state == "present" or state == "update"
+
+- name:                 worker_crt_file
+  set_fact:
+    worker_crt_file:    "{{ lookup('file', '{{ ca_path }}/worker.pem') }}"
+  when:                 state == "present" or state == "update"
+
+- name:                 worker_crt
+  shell:                echo "{{ worker_crt_file }}" | gzip | base64
+  register:             worker_crt
+  when:                 state == "present" or state == "update"
+
+- name:                 admin_crt_file
+  set_fact:
+    admin_crt_file:     "{{ lookup('file', '{{ ca_path }}/admin.pem') }}"
+  when:                 state == "present" or state == "update"
+
+- name:                 admin_crt
+  shell:                echo "{{ admin_crt_file }}" | gzip | base64
+  register:             admin_crt
+  when:                 state == "present" or state == "update"
+
+- name:                 admin_key_file
+  set_fact:
+    admin_key_file:     "{{ lookup('file', '{{ ca_path }}/admin-key.pem') }}"
+  when:                 state == "present" or state == "update"
+
+- name:                 admin_key
+  shell:                echo "{{ admin_key_file }}" | gzip | base64
+  register:             admin_key
+  when:                 state == "present" or state == "update"
+
+- name:                 worker_key_file
+  set_fact:
+    worker_key_file:    "{{ lookup('file', '{{ ca_path }}/worker-key.pem') }}"
+  when:                 state == "present" or state == "update"
+
+- name:                 worker_key
+  shell:                echo "{{ worker_key_file }}" | gzip | base64
+  register:             worker_key
+  when:                 state == "present" or state == "update"

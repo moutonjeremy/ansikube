@@ -1,0 +1,35 @@
+- local_action:
+    module:                 ec2_elb_lb
+    name:                   "{{ vpc_name | replace('_', '-') }}-elb-controller"
+    state:                  "{{ state }}"
+    purge_instance_ids:     true
+    subnets:                "{{ subnet_ids }}"
+    region:                 "{{ aws_region }}"
+    security_group_names:   "{{ vpc_name}}_elb_controller"
+    listeners:
+      - protocol:           TCP
+        load_balancer_port: 2379
+        instance_port:      2379
+      - protocol:           TCP
+        load_balancer_port: 443
+        instance_port:      443
+  register:                 elb
+  when:                     state == "present"
+
+- name: ELB | Write elb dns to file inside the vars directory
+  shell: echo "{{ elb.elb.dns_name }}" > "{{ vpc_name }}-elb-dns-info.yml"
+  args:
+    chdir: vars/
+  when: state == "present"
+
+- name:               Set elb dns name in variable
+  set_fact:
+    elb_url:           "{{ lookup('file', 'vars/' + vpc_name + '-elb-dns-info.yml') }}"
+
+- local_action:
+    module:                 ec2_elb_lb
+    name:                   "{{ vpc_name | replace('_', '-') }}-elb-controller"
+    state:                  "{{ state }}"
+    purge_instance_ids:     true
+    region:                 "{{ aws_region }}"
+  when:                     state == "absent"

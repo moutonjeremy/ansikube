@@ -1,0 +1,110 @@
+---
+# tasks file for kubernetes-ca
+- file:
+    path: "{{ ca_path }}"
+    mode: 0755
+    state: directory
+  when: state == "present"
+
+- file:
+    path: "{{ ca_path }}"
+    state: "{{ state }}"
+  when: state == "absent"
+
+- name: create cluster root ca key
+  shell: >
+    {{ openssl }} genrsa -out {{ ca_path }}/ca-key.pem 2048
+    creates={{ ca_path }}/ca-key.pem
+  when: state == "present"
+
+- name: create cluster root ca 
+  shell: >
+    {{ openssl }} req -x509 -new -nodes -days 10000
+    -key {{ ca_path }}/ca-key.pem
+    -out {{ ca_path }}/ca.pem
+    -subj "/CN=kube-ca"
+    creates={{ ca_path }}/ca.pem
+  when: state == "present"
+
+- name: create openssl.cnf
+  template: src=roles/openssl/templates/openssl.cnf.j2 dest={{ ca_path }}/openssl.cnf
+  when: state == "present"
+
+- name: slurp openssl.cnf content
+  slurp:
+    src: "{{ ca_path }}/openssl.cnf"
+  register: openssl_cnf
+  run_once: true
+  when: state == "present"
+
+- name: record openssl.cnf hash
+  set_fact:
+    openssl_cnf_sha1: "{{ openssl_cnf.content | hash('sha1') }}"
+  when: state == "present"
+
+- name: generate apiserver key
+  shell: >
+    {{ openssl }} genrsa -out {{ ca_path }}/apiserver-key.pem 2048
+    creates={{ ca_path }}/apiserver-key.pem
+  when: state == "present"
+
+- name: generate apiserver csr
+  shell: >
+    {{ openssl }} req -new -key {{ ca_path }}/apiserver-key.pem
+    -out {{ ca_path }}/apiserver.csr -subj "/CN=kube-apiserver"
+    -config {{ ca_path }}/openssl.cnf
+    creates={{ ca_path }}/apiserver.csr
+  when: state == "present"
+
+- name: generate apiserver crt
+  shell: >
+    {{ openssl }} x509 -req -in {{ ca_path }}/apiserver.csr
+    -CA {{ ca_path }}/ca.pem -CAkey {{ ca_path }}/ca-key.pem
+    -CAcreateserial -out {{ ca_path }}/apiserver.pem -days 3650
+    -extensions v3_req -extfile {{ ca_path }}/openssl.cnf
+    creates={{ ca_path }}/apiserver.pem
+  when: state == "present"
+
+- name: generate worker key
+  shell: >
+    {{ openssl }} genrsa -out {{ ca_path }}/worker-key.pem 2048
+    creates={{ ca_path }}/worker-key.pem
+  when: state == "present"
+
+- name: generate worker csr
+  shell: >
+    {{ openssl }} req -new -key {{ ca_path }}/worker-key.pem
+    -out {{ ca_path }}/worker.csr -subj "/CN=kube-worker"
+    -config {{ ca_path }}/openssl.cnf
+    creates={{ ca_path }}/worker.csr
+  when: state == "present"
+
+- name: generate worker crt
+  shell: >
+    {{ openssl }} x509 -req -in {{ ca_path }}/worker.csr
+    -CA {{ ca_path }}/ca.pem -CAkey {{ ca_path }}/ca-key.pem
+    -CAcreateserial -out {{ ca_path }}/worker.pem -days 3650
+    creates={{ ca_path }}/worker.pem
+  when: state == "present"
+
+- name: generate admin key
+  shell: >
+    {{ openssl }} genrsa -out {{ ca_path }}/admin-key.pem 2048
+    creates={{ ca_path }}/admin-key.pem
+  when: state == "present"
+
+- name: generate admin csr
+  shell: >
+    {{ openssl }} req -new -key {{ ca_path }}/admin-key.pem
+    -out {{ ca_path }}/admin.csr -subj "/CN=kube-admin"
+    -config {{ ca_path }}/openssl.cnf
+    creates={{ ca_path }}/admin.csr
+  when: state == "present"
+
+- name: generate admin crt
+  shell: >
+    {{ openssl }} x509 -req -in {{ ca_path }}/admin.csr
+    -CA {{ ca_path }}/ca.pem -CAkey {{ ca_path }}/ca-key.pem
+    -CAcreateserial -out {{ ca_path }}/admin.pem -days 3650
+    creates={{ ca_path }}/admin.pem
+  when: state == "present"

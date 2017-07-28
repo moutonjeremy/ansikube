@@ -1,0 +1,31 @@
+# subnet
+- name:               create subnet
+  ec2_vpc_subnet:
+    state:            "{{ state }}"
+    vpc_id:           "{{ vpc_id }}"
+    cidr:             "{{ item.value.cidr }}"
+    az:               "{{ aws_region }}{{ item.value.az }}"
+    region:           "{{ aws_region }}"
+    resource_tags:
+      Name:           "{{ vpc_name }}_{{ item.key }}"
+  with_dict: "{{ public_subnet }}"
+
+- ec2_vpc_subnet_facts:
+    region:           "{{ aws_region }}"
+    filters:
+      vpc-id: "{{ vpc_id }}"
+  register: subnet_facts
+  when: state == "present"
+
+- name: subnets
+  set_fact:
+    subnet_ids: "{{ subnet_facts.subnets|map(attribute='id')|list }}"
+  when: state == "present"
+
+- name: set assign auto ip
+  update_subnet_attribute:
+    subnet: "{{ item }}"
+    region: "{{ aws_region }}"
+    state: "{{ state }}"
+  with_items: "{{ subnet_ids }}"
+  when: state == "present"

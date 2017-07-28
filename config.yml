@@ -1,0 +1,56 @@
+---
+#### SSL
+openssl: "openssl"
+local_certs: "certs"
+ca_path: "credentials"
+
+#### aws vars
+# generic
+aws_region: eu-west-1
+env: dev
+s3_path: kubernetes-states
+
+# vpc
+vpc_name: kube_{{ env }}
+vpc_cidr_block: 10.50.0.0/16
+
+# public subnet
+public_subnet:
+  public_subnet_1:
+    cidr: 10.50.1.0/24
+    az: a
+  public_subnet_2:
+    cidr: 10.50.2.0/24
+    az: b
+  public_subnet_3:
+    cidr: 10.50.3.0/24
+    az: c
+
+#### Kubernetes configuration
+#dns_name: kube.{{ environment }}.<your domain name>
+
+kube_version: v1.5.1+coreos.0
+
+controller:
+  name: controller
+  autoscaling_group:
+    min: 1
+    max: 1
+    desired: 1
+  ami_id:	ami-a0ff1ed9
+  instance_type: t2.medium
+  volume_root: 
+    size: 50
+    type: gp2
+
+worker_list:
+  node:
+    autoscaling_group:
+      min: 1
+      max: 1
+      desired: 1
+    ami_id:	ami-a0ff1ed9
+    instance_type: t2.medium
+    volume_root: 
+      size: 50
+      type: gp2

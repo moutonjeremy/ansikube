@@ -1,0 +1,13 @@
+- name:       key name
+  ec2_key:
+    name:     "{{ vpc_name }}"
+    state:    "{{ state }}"
+    region:   "{{ aws_region }}"
+  register:   ec2_key
+
+- name: save private key
+  copy:
+    content: "{{ ec2_key.key.private_key }}" 
+    dest: "./{{ vpc_name }}.pem" 
+    mode: 0600
+  when: state == "present" and ec2_key.changed == true
