@@ -17,14 +17,14 @@
 - name:                         cloud-config template
   template:
     src:                        roles/kubernetes/templates/controller_cloud_config.yml.j2
-    dest:                       templates/controller_cloud_config.yml
+    dest:                       generated_files/controller_cloud_config.yml
   when:                         state == "present" or state == "update"
 
 - name:                         upload cloud-config to s3
   s3:
     bucket:                     "{{ s3_path }}"
     object:                     "/{{ env }}/{{ userdata_file }}"
-    src:                        "templates/controller_cloud_config.yml"
+    src:                        "vars/controller_cloud_config.yml"
     mode:                       put
   when:                         state == "present" or state == "update"
 
@@ -38,7 +38,7 @@
     instance_type:              "{{ controller.instance_type }}"
     instance_profile_name:      "{{ vpc_name }}_controller_role"
     state:                      "{{ state }}"
-    user_data:                  "{{ lookup('file', 'templates/user_data_controller.yml') }}"
+    user_data:                  "{{ lookup('file', 'vars/user_data_controller.yml') }}"
     volumes:
     - device_name:              "/dev/xvda"
       volume_size:              "{{ controller.volume_root.size }}"

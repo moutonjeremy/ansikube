@@ -1,7 +1,7 @@
 - name:                           template for role
   template:
     src:                          roles/aws/templates/controller_policy.json.j2
-    dest:                         templates/controller_policy.json
+    dest:                         vars/controller_policy.json
   when:                           state == "present"
 
 - name:                           create role
@@ -17,7 +17,7 @@
     iam_name:                     "{{ vpc_name }}_controller_role"
     policy_name:                  "{{ vpc_name }}_controller_policy"
     state:                        "{{ state }}"
-    policy_document:              "templates/controller_policy.json"
+    policy_document:              "vars/controller_policy.json"
   when:                           state == "present"
 
 - name:                           delete IAM policy to IAM role
